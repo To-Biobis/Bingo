@@ -3,16 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <title>Wörterbingo</title>
+
 <style>
 body {
     font-family: Arial, sans-serif;
     text-align: center;
     margin: 40px;
     background: #f5f5f5;
-}
-
-h1 {
-    margin-bottom: 10px;
 }
 
 .controls {
@@ -25,8 +22,7 @@ input {
 }
 
 button {
-    padding: 8px 14px;
-    margin: 4px;
+    padding: 6px 12px;
     cursor: pointer;
 }
 
@@ -45,17 +41,25 @@ button {
     background: #ffdede;
 }
 
-#gistList {
-    margin-top: 10px;
-    font-size: 14px;
+#codeBox {
+    position: fixed;
+    bottom: 10px;
+    right: 10px;
+    background: white;
+    padding: 10px 14px;
+    border-radius: 10px;
+    border: 1px solid #ccc;
+    font-size: 12px;
+    text-align: right;
+    cursor: pointer;
 }
 
-#shareBox {
-    margin-top: 10px;
-    font-weight: bold;
+#codeBox:hover {
+    background: #f0f0f0;
 }
 </style>
 </head>
+
 <body>
 
 <h1>🎯 Wörterbingo</h1>
@@ -69,26 +73,23 @@ button {
 
     <br><br>
 
-    Gist hinzufügen:
+    Gist:
     <input type="text" id="gistInput" placeholder="https://gist.github.com/...">
     <button onclick="addGist()">+</button>
 
     <div id="gistList"></div>
 
     <br>
-
-    Share Code:
-    <input type="text" id="shareCode" maxlength="4">
-    <button onclick="applyCode()">Setzen</button>
-    <button onclick="randomCode()">Zufällig</button>
-
-    <div id="shareBox"></div>
-
-    <br>
-    <button onclick="generateWords()">Neue Wörter</button>
+    <button onclick="generateNewCode()">Neue Wörter</button>
 </div>
 
 <div id="words"></div>
+
+<div id="codeBox" onclick="changeCode()">
+    Diese Wörter sind mit diesem Code generiert:<br>
+    <b id="codeDisplay">----</b><br>
+    <small>Code ändern</small>
+</div>
 
 <script>
 const DEFAULT_GIST = "https://gist.github.com/increpare/4ab077493083edb18919b3666517f248";
@@ -96,44 +97,69 @@ const GOOFY_GIST = "https://gist.github.com/To-Biobis/271f2a8d44bb5bcfa5156b3858
 
 let customGists = [];
 let allWords = [];
-let seed = 1;
 let currentWords = [];
+let seed = 1;
+let currentCode = "";
 
-// Seeded RNG
+// Seed RNG
 function seededRandom() {
-    seed = (seed * 9301 + 49297) % 233280;
-    return seed / 233280;
+    seed = (seed * 1664525 + 1013904223) % 4294967296;
+    return seed / 4294967296;
 }
 
-function setSeedFromCode(code) {
-    seed = 0;
-    for (let i = 0; i < code.length; i++) {
-        seed += code.charCodeAt(i);
-    }
+function setSeed(s) {
+    seed = s;
 }
 
-function randomCode() {
+// Code Format:
+// A1B2
+// A,B = seed
+// 1 = normal
+// 2 = goofy
+
+function encodeCode(seedNum, normal, goofy) {
     const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-    let code = "";
-    for (let i = 0; i < 4; i++) {
-        code += chars[Math.floor(Math.random() * chars.length)];
-    }
-    document.getElementById("shareCode").value = code;
+
+    const a = chars[(seedNum >> 5) % chars.length];
+    const b = chars[(seedNum >> 1) % chars.length];
+
+    return a + normal + b + goofy;
+}
+
+function decodeCode(code) {
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+
+    const a = chars.indexOf(code[0]);
+    const b = chars.indexOf(code[2]);
+
+    const seedNum = a * 100 + b;
+
+    const normal = parseInt(code[1]) || 0;
+    const goofy = parseInt(code[3]) || 0;
+
+    return { seedNum, normal, goofy };
+}
+
+function updateCodeDisplay() {
+    document.getElementById("codeDisplay").textContent = currentCode;
+    history.replaceState(null, "", "?code=" + currentCode);
+}
+
+function generateNewCode() {
+    const seedNum = Math.floor(Math.random() * 1000);
+    const normal = parseInt(document.getElementById("normalCount").value) || 0;
+    const goofy = parseInt(document.getElementById("goofyCount").value) || 0;
+
+    currentCode = encodeCode(seedNum, normal, goofy);
     applyCode();
 }
 
-function applyCode() {
-    const code = document.getElementById("shareCode").value.toUpperCase();
-    document.getElementById("shareCode").value = code;
-    
-    setSeedFromCode(code);
+function changeCode() {
+    const code = prompt("Code eingeben:", currentCode);
+    if (!code) return;
 
-    const url = `${window.location.pathname}?code=${code}`;
-    document.getElementById("shareBox").innerHTML = url;
-
-    history.replaceState(null, "", "?code=" + code);
-
-    generateWords();
+    currentCode = code.toUpperCase();
+    applyCode();
 }
 
 function extractWords(text) {
@@ -152,39 +178,33 @@ async function fetchGist(url) {
     const id = getGistId(url);
     if (!id) return [];
 
-    try {
-        const res = await fetch(`https://api.github.com/gists/${id}`);
-        const data = await res.json();
+    const res = await fetch(`https://api.github.com/gists/${id}`);
+    const data = await res.json();
 
-        let text = "";
-        for (const file in data.files) {
-            text += data.files[file].content + "\n";
-        }
-
-        return extractWords(text);
-    } catch {
-        return [];
+    let text = "";
+    for (const file in data.files) {
+        text += data.files[file].content + "\n";
     }
+
+    return extractWords(text);
 }
 
 function addGist() {
     const input = document.getElementById("gistInput");
-    const url = input.value.trim();
-    if (!url) return;
+    if (!input.value) return;
 
-    customGists.push(url);
+    customGists.push(input.value);
     input.value = "";
     updateGistList();
 }
 
 function updateGistList() {
-    const list = document.getElementById("gistList");
-    list.innerHTML = "<b>Eigene Gists:</b><br>";
+    const div = document.getElementById("gistList");
+    div.innerHTML = "<b>Eigene Gists:</b><br>";
 
     customGists.forEach((g, i) => {
-        const div = document.createElement("div");
-        div.innerHTML = `${g} <button onclick="removeGist(${i})">X</button>`;
-        list.appendChild(div);
+        div.innerHTML += g + 
+            ` <button onclick="removeGist(${i})">X</button><br>`;
     });
 }
 
@@ -195,49 +215,54 @@ function removeGist(i) {
 
 function pickWord() {
     if (allWords.length === 0) return "";
-    const index = Math.floor(seededRandom() * allWords.length);
-    return allWords[index];
+    return allWords[Math.floor(seededRandom() * allWords.length)];
 }
 
 function renderWords() {
-    const container = document.getElementById("words");
-    container.innerHTML = "";
+    const div = document.getElementById("words");
+    div.innerHTML = "";
 
     currentWords.forEach((word, i) => {
-        const div = document.createElement("div");
-        div.className = "word";
-        div.textContent = word;
+        const el = document.createElement("div");
+        el.className = "word";
+        el.textContent = word;
 
-        div.onclick = () => {
+        el.onclick = () => {
             currentWords[i] = pickWord();
             renderWords();
         };
 
-        container.appendChild(div);
+        div.appendChild(el);
     });
 }
 
-async function generateWords() {
-    const normalCount = parseInt(document.getElementById("normalCount").value) || 0;
-    const goofyCount = parseInt(document.getElementById("goofyCount").value) || 0;
+async function applyCode() {
+    const decoded = decodeCode(currentCode);
 
-    let normal = await fetchGist(DEFAULT_GIST);
-    let goofy = await fetchGist(GOOFY_GIST);
+    document.getElementById("normalCount").value = decoded.normal;
+    document.getElementById("goofyCount").value = decoded.goofy;
 
-    let custom = [];
-    for (const gist of customGists) {
-        custom = custom.concat(await fetchGist(gist));
+    setSeed(decoded.seedNum);
+
+    updateCodeDisplay();
+
+    const normalWords = await fetchGist(DEFAULT_GIST);
+    const goofyWords = await fetchGist(GOOFY_GIST);
+
+    let customWords = [];
+    for (const g of customGists) {
+        customWords = customWords.concat(await fetchGist(g));
     }
 
     allWords = [
-        ...normal.slice(0, normalCount * 20),
-        ...goofy.slice(0, goofyCount * 20),
-        ...custom
+        ...normalWords,
+        ...goofyWords,
+        ...customWords
     ];
 
-    const total = normalCount + goofyCount;
-    currentWords = [];
+    const total = decoded.normal + decoded.goofy;
 
+    currentWords = [];
     for (let i = 0; i < total; i++) {
         currentWords.push(pickWord());
     }
@@ -245,19 +270,21 @@ async function generateWords() {
     renderWords();
 }
 
-// URL Code laden
-function loadCodeFromURL() {
+function loadFromURL() {
     const params = new URLSearchParams(window.location.search);
     const code = params.get("code");
+
     if (code) {
-        document.getElementById("shareCode").value = code;
-        applyCode();
+        currentCode = code.toUpperCase();
     } else {
-        randomCode();
+        generateNewCode();
+        return;
     }
+
+    applyCode();
 }
 
-loadCodeFromURL();
+loadFromURL();
 </script>
 
 </body>

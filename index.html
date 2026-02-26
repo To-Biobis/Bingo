@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>Wörterbingo</title>
+<style>
+body {
+    font-family: Arial, sans-serif;
+    text-align: center;
+    margin: 40px;
+    background: #f5f5f5;
+}
+
+h1 {
+    margin-bottom: 20px;
+}
+
+.controls {
+    margin-bottom: 20px;
+}
+
+input {
+    width: 60px;
+    padding: 5px;
+    font-size: 16px;
+    margin: 5px;
+}
+
+button {
+    padding: 10px 15px;
+    font-size: 16px;
+    margin-top: 10px;
+    cursor: pointer;
+}
+
+#words {
+    margin-top: 20px;
+}
+
+.word {
+    display: inline-block;
+    background: white;
+    padding: 12px 18px;
+    margin: 8px;
+    border-radius: 10px;
+    font-size: 20px;
+    cursor: pointer;
+    border: 2px solid #ddd;
+    transition: 0.15s;
+}
+
+.word:hover {
+    background: #ffe0e0;
+    transform: scale(1.05);
+}
+</style>
+</head>
+<body>
+
+<h1>🎯 Wörterbingo</h1>
+
+<div class="controls">
+    Normale Wörter:
+    <input type="number" id="normalCount" value="5" min="0">
+    
+    Goofy Wörter:
+    <input type="number" id="goofyCount" value="0" min="0">
+    
+    <br>
+    <button onclick="generateWords()">Neue Wörter</button>
+</div>
+
+<div id="words"></div>
+
+<script>
+const DEFAULT_GIST = "https://gist.github.com/increpare/4ab077493083edb18919b3666517f248";
+const GOOFY_GIST = "https://gist.github.com/To-Biobis/271f2a8d44bb5bcfa5156b385843abbd";
+
+async function fetchGist(gistUrl) {
+    const match = gistUrl.match(/gist\.github\.com\/.*\/([a-f0-9]+)/i);
+    if (!match) return [];
+
+    const gistId = match[1];
+    const apiUrl = `https://api.github.com/gists/${gistId}`;
+
+    try {
+        const res = await fetch(apiUrl);
+        const data = await res.json();
+
+        let text = "";
+        for (const file in data.files) {
+            text += data.files[file].content + "\n";
+        }
+
+        return extractWords(text);
+    } catch {
+        return [];
+    }
+}
+
+function extractWords(text) {
+    return text
+        .toLowerCase()
+        .replace(/[^a-zäöüß\s]/gi, " ")
+        .split(/\s+/)
+        .filter(w => w.length > 2);
+}
+
+function pickRandom(words, count) {
+    const shuffled = [...words].sort(() => 0.5 - Math.random());
+    return shuffled.slice(0, count);
+}
+
+function renderWords(words) {
+    const container = document.getElementById("words");
+    container.innerHTML = "";
+
+    words.forEach(word => {
+        const div = document.createElement("div");
+        div.textContent = word;
+        div.className = "word";
+
+        div.onclick = () => div.remove();
+
+        container.appendChild(div);
+    });
+}
+
+async function generateWords() {
+    const normalCount = parseInt(document.getElementById("normalCount").value) || 0;
+    const goofyCount = parseInt(document.getElementById("goofyCount").value) || 0;
+
+    const normalWords = await fetchGist(DEFAULT_GIST);
+    const goofyWords = await fetchGist(GOOFY_GIST);
+
+    const selectedNormal = pickRandom(normalWords, normalCount);
+    const selectedGoofy = pickRandom(goofyWords, goofyCount);
+
+    const combined = [...selectedNormal, ...selectedGoofy]
+        .sort(() => 0.5 - Math.random());
+
+    renderWords(combined);
+}
+
+// Beim Laden starten
+generateWords();
+</script>
+
+</body>
+</html>
